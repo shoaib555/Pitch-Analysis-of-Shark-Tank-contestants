@@ -1,0 +1,150 @@
+#Reading the file into R and using only the terms Description and Deal as variable.
+rm(list=ls())
+vc=read.csv("Dataset.csv",stringsAsFactors = F)
+vc=vc[,c(1,2)]
+vc$deal=as.factor(vc$deal)
+str(vc)
+table(vc$deal)
+vc$Deal=ifelse(vc$deal==F,0,1)
+vc=vc[,c(2,3)]
+
+#Creating a corpus with the varibale description for 
+#cleaning the data and then creating Document term matrix with the varible Deal as DV.
+library(tm)
+library(SnowballC)
+
+corpus = VCorpus(VectorSource(vc$description))
+corpus = tm_map(corpus, content_transformer(tolower))
+as.character(corpus[[60]])
+corpus = tm_map(corpus, removeNumbers)
+as.character(corpus[[60]])
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeWords, stopwords("english"))
+as.character(corpus[[60]])
+corpus = tm_map(corpus, stemDocument)
+as.character(corpus[[60]])
+corpus = tm_map(corpus, stripWhitespace)
+as.character(corpus[[60]])
+
+dtm = DocumentTermMatrix(corpus)
+dtm = removeSparseTerms(dtm, 0.999)
+dataset = as.data.frame(as.matrix(dtm))
+dataset$Deal=vc$Deal
+
+dataset$Deal = factor(dataset$Deal, levels = c(0,1))
+
+#using the data frame created to predict the Deal by using CART.
+
+library(caTools)
+set.seed(123)
+split = sample.split(dataset$Deal, SplitRatio = 0.8)
+training_set = subset(dataset, split == TRUE)
+test_set = subset(dataset, split == FALSE)
+
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(caret)
+cart = rpart(Deal~ ., data=training_set, method="class")
+cart
+
+#Plot the CART model
+prp(cart,extra=2)
+
+fancyRpartPlot(cart)
+printcp(cart)
+plotcp(cart)
+
+cr1=prune(cart,cp=0.031)
+cr1
+fancyRpartPlot(cr1)
+
+predictCART = predict(cart, newdata=test_set[-3465],type="class")
+
+confusionMatrix(test_set$Deal,data=predictCART,positive="1")
+
+#using the data frame created to predict the Deal by using Random Forest.
+library(randomForest)
+set.seed(123)
+crf = randomForest(x = training_set[-3465],
+                   y = training_set$Deal,
+                   ntree = 100, mtry=15)
+
+#Plot a chart of variable importance in a random forest
+varImpPlot(crf)
+
+# Make predictions:
+predictRF = predict(crf, newdata=test_set[-3465],type="class")
+
+#Confusion matrix
+confusionMatrix(test_set$Deal,data=predictRF,positive="1")
+
+
+#using the data frame created to predict the Deal by using logistic regression.
+log=glm(Deal~.,data=training_set,family = binomial)
+
+# Make predictions:
+logi = predict(log, newdata=test_set[-3465],type="response")
+Log = table(test_set$Deal, logi > 0.5)
+Log
+#####Accuracy
+(Log[1,1]+Log[2,2])/nrow(test_set)
+
+#Adding a derived variable Ratio=asked for/valuation and rebuilding the models built above.
+vc=read.csv("Dataset.csv",stringsAsFactors = F)
+vc$Ratio=round(vc$askedFor/vc$valuation,2)
+
+vc=vc[,c(1,2,20)]
+vc$deal=as.factor(vc$deal)
+str(vc)
+table(vc$deal)
+vc$Deal=ifelse(vc$deal==F,0,1)
+vc=vc[,c(2,3,4)]
+
+
+dataset$Ratio=vc$Ratio
+dataset$Deal = factor(dataset$Deal, levels = c(0,1))
+
+
+#Running Randon CART.
+set.seed(1234)
+split = sample.split(dataset$Deal, SplitRatio = 0.8)
+training_set = subset(dataset, split == TRUE)
+test_set = subset(dataset, split == FALSE)
+
+cart = rpart(Deal~., data=training_set, method="class")
+cart
+
+#Plot the CART model
+prp(cart,extra=2)
+
+
+
+predictCART = predict(cart, newdata=test_set,type="class")
+
+confusionMatrix(test_set$Deal,data=predictCART,positive="1")
+
+#Running a random forest.
+crf = randomForest(x = training_set[-3465],
+                   y = training_set$Deal,
+                   ntree = 100, mtry=15)
+
+#Plot a chart of variable importance in a random forest
+varImpPlot(crf)
+
+# Make predictions:
+predictRF = predict(crf, newdata=test_set[-3465],type="class")
+
+#Confusion matrix
+confusionMatrix(test_set$Deal,data=predictRF,positive="1")
+
+
+#Running a logistic regression model.
+log=glm(Deal~.,data=training_set,family = binomial)
+
+# Make predictions:
+logi = predict(log, newdata=test_set[-3465],type="response")
+Log = table(test_set$Deal, logi > 0.5)
+Log
+#####Accuracy
+(Log[1,1]+Log[2,2])/nrow(test_set)
